@@ -3,7 +3,6 @@ apply plugin: 'maven-publish'
 
 android {
     compileSdkVersion rootProject.ext.compileSdkVersion
-    buildToolsVersion rootProject.ext.buildToolsVersion
 
     defaultConfig {
         minSdkVersion 9
@@ -32,7 +31,7 @@ repositories {
 }
 
 configurations {
-   //androidTestCompile.exclude module: 'org.eclipse.paho.client.mqttv3'
+    //androidTestCompile.exclude module: 'org.eclipse.paho.client.mqttv3'
 }
 
 dependencies {
@@ -42,18 +41,32 @@ dependencies {
 }
 
 android.libraryVariants.all { variant ->
-    task("generate${variant.name}Javadoc", type: Javadoc) {
+    def name = name.substring(0, 1).toUpperCase() + name.substring(1)
+    task("generate${name}Javadoc", type: Javadoc) {
         title = "$name $version API"
         description "Generates Javadoc for $variant.name."
         source = variant.javaCompile.source
         ext.androidJar =
-                "${android.sdkDirectory}/platforms/${android.compileSdkVersion}/android.jar"
-        classpath = files(variant.javaCompile.classpath.files) + files(ext.androidJar)
+            "${android.sdkDirectory}/platforms/${android.compileSdkVersion}/android.jar"
+        afterEvaluate {
+            classpath = files(variant.javaCompile.classpath.files) + files(ext.androidJar)
+        }
         options.links("http://docs.oracle.com/javase/7/docs/api/");
         options.links("http://d.android.com/reference/");
+        options.addStringOption('Xdoclint:none', '-quiet')
+        failOnError false
         exclude '**/BuildConfig.java'
         exclude '**/R.java'
     }
+}
+
+def snapshot = project.version.endsWith('-SNAPSHOT')
+
+// Generate Javadoc
+task("generateJavadocJar", type: Jar) {
+    dependsOn snapshot? 'generateDebugJavadoc': 'generateReleaseJavadoc'
+    from("$buildDir/docs/javadoc")
+    classifier = 'javadoc'
 }
 
 // Generate Sources Jar
@@ -64,46 +77,38 @@ task("generateSourcesJar", type: Jar) {
 
 // Copy the Paho Java client into the libs directory to bundle it with the AAR
 task("copyLibs", type: Copy) {
-    println "Copying MQTT Jar into libs directory"
+    doFirst {
+        println "Copying MQTT Jar into libs directory"
+    }
     from configurations.compile
     into 'libs'
     include 'org.eclipse.paho*'
 }
 
-// Renames the Release AAR file to a maven convention
-task("renameReleaseAAR", type: Copy) {
-    from("$buildDir/outputs/aar")
-    into("$buildDir/outputs/aar/")
-    include('org.eclipse.paho.android.service-debug.aar')
-    rename('org.eclipse.paho.android.service-debug.aar', rootProject.ext.serviceArchivesBaseName + '-' + rootProject.ext.serviceVersion + '.aar')
-}
-
 // Generate Plain Jar Version of library (good for legacy users)
 task("generateLibraryJar", type: Jar) {
-    from("$buildDir/intermediates/classes/release")
-}
-
-// Generate Javadoc
-task("generateJavaDocJar", type: Jar, dependsOn: (rootProject.ext.serviceVersion.endsWith('-SNAPSHOT') ? 'generatedebugJavadoc' : 'generatereleaseJavadoc')){
-    from("$buildDir/docs/javadoc")
-    classifier = 'javadoc'
+    afterEvaluate {
+        dependsOn compileReleaseJavaWithJavac
+        from compileReleaseJavaWithJavac.outputs.files.collect()
+    }
 }
 
 publishing {
     publications {
         paho(MavenPublication) {
-            groupId 'org.eclipse.paho'
+            artifact generateJavadocJar
             artifact generateSourcesJar
             artifact generateLibraryJar
-            artifact generateJavaDocJar
-            artifact "$buildDir/outputs/aar/" + rootProject.ext.serviceArchivesBaseName + "-" + rootProject.ext.serviceVersion + ".aar"
+            for(def file in fileTree(dir: "$buildDir/outputs/aar", include: ['*-release.aar'])) {
+                artifact file
+            }
         }
     }
     repositories {
         if (project.hasProperty('eclipseRepoUsername')) {
             maven {
                 name 'eclipse'
-                url 'https://repo.eclipse.org/content/repositories/paho-' + (rootProject.ext.serviceVersion.endsWith('-SNAPSHOT') ? 'snapshots/' : 'releases/')
+                url 'https://repo.eclipse.org/content/repositories/paho-' + (snapshot? 'snapshots/': 'releases/')
                 credentials {
                     username eclipseRepoUsername
                     password eclipseRepoPassword
@@ -117,18 +122,6 @@ publishing {
     }
 }
 
-
-task debug << {
-    configurations.compile.each { println it}
-}
-// Required to bundle Java library Jar in AAR
-clean.doLast{
-    copyLibs.execute()
-}
-assemble.doLast {
-    renameReleaseAAR.execute()
-}
-
-clean.doFirst {
-    delete 'libs'
+task debug doLast {
+    configurations.compile.each { println it }
 }
