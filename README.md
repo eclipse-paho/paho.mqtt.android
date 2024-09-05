@@ -14,7 +14,7 @@ The Paho Android Service is an MQTT client library written in Java for developin
 | Message Persistence | :heavy_check_mark: |   |
 
 
-To get started, download [Android Studio](https://developer.android.com/studio/install?hl=ru). You will also need to download the [Android SDK](https://developer.android.com/sdk/installing/adding-packages.html). Currently you will need the SDK for 24.
+To get started, download [Android Studio](https://developer.android.com/studio/install?hl). You will also need to download the [Android SDK](https://developer.android.com/sdk/installing/adding-packages.html). Currently you will need the SDK for 24.
 
 
 ## Project description:
